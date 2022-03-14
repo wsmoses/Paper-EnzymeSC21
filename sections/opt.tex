@@ -1,0 +1,348 @@
+
+\section{Optimizations}
+\label{sec:opt}
+
+
+\begin{figure*}
+    \centering
+ \begin{tabular}{c|c|c}
+\textbf{(a)}&\textbf{(b)}&\textbf{(c)}\\
+\begin{minipage}[T]{0.26\linewidth}
+\begin{minted}[fontsize=\small, escapeinside=||]{cpp}
+for (int i=0; i<N; i++) {
+    for (int j=0; j<M; j++) {
+        use(array[j]);
+    }
+}
+overwrite(array);
+
+
+
+
+
+
+
+
+|\;|
+\end{minted}
+\end{minipage}& \begin{minipage}[T]{0.34\linewidth}
+\begin{minted}[fontsize=\small]{cpp}
+double *cache = new double[N*M];
+for (int i=0; i<N; i++) {
+    for (int j=0; j<M; j++) {
+        cache[i*M+j] = array[j];
+        use(array[j]);
+    }
+}
+overwrite(array);
+diffe_overwrite(array);
+for (int i=N-1; i>=0; i--) {
+    for (int j=M-1; j>=0; j--) {
+        diffe_use(cache[i*M+j]);
+    }
+}
+delete[] cache;
+\end{minted}
+\end{minipage}& \begin{minipage}[T]{0.34\linewidth}
+\begin{minted}[fontsize=\small]{cpp}
+double *cache = new double[M];
+memcpy(cache, array, M*sizeof(double));
+for (int i=0; i<N; i++) {
+    for (int j=0; j<M; j++) {
+        use(array[j]);
+    }
+}
+overwrite(array);
+diffe_overwrite(array);
+for (int i=N-1; i>=0; i--) {
+    for (int j=M-1; j>=0; j--) {
+        diffe_use(cache[j]);
+    }
+}
+delete[] cache;
+\end{minted}
+\end{minipage}
+\end{tabular}
+    \caption{In (a), there is a sample program that uses values of an array in a loop nest. The loads of the array cannot be hoisted by LICM. The array is overwritten outside of the loop nest. Enzyme would require caching a value for every execution of the load instruction, as shown in (b) and using $\Theta(NM)$ memory. Using the cache LICM optimization, the cache could be hoisted outside the loop as shown in (c), requiring only $\Theta(M)$ memory.}
+    \label{fig:cache_licm}
+\end{figure*}
+
+% Note: not a hierarchy, at least not the kinds of memory we are talking about here (we don't mean caches)
+GPU architectures feature multiple kinds of memory that differ in their access latency, visibility, and size.
+While registers and shared memory are much faster than global memory, they are limited resources on GPUs and are allocated for a kernel at launch time. If a kernel requests a
+large number of registers or a large shared-memory allocation, the effective available parallelism (occupancy) of the kernel is lowered to fulfill
+the request. This can become a bottleneck for applications since a major benefit of using GPUs is their high throughput offered by plentiful parallelism.
+% are allocated for an application at launch time, high usage can become a bottleneck which effectively limits the exploitable parallelism.
+%impact the ability for the GPU to run multiple parts of the computation simultaneously .
+To achieve good performance, Enzyme must consequently consider trade-offs between using slower global memory or increasing the use of registers and shared memory, which may result in fewer kernel instances being run simultaneously.
+%attempts to maintain as much as the inherent parallelism of the original program without sacrificing performance by creating memory allocations or accesses that hinder performance.
+
+Like all reverse-mode AD tools, Enzyme may need to preserve values generated in the forward pass for use in the reverse. If a value is available in the reverse pass, for example, if the memory that holds it was not overwritten, Enzyme will simply use it.
+When a memory location holding a value required for the reverse pass is modified, however, Enzyme must ensure that the value is preserved, or cached, an action that inevitably requires additional storage.
+
+While it is generally beneficial to reduce the amount of memory used to cache values, doing so is especially important for GPU execution.
+In general, the number of memory locations that need to be cached is not known at compile time.
+Consequently, Enzyme has to cache values in thread-local storage, allocated through the dynamic allocation function \lstinline|malloc|. In CUDA, \lstinline|malloc| is backed by global memory and cached in the L1 cache. Global memory is substantially slower to access than registers or shared memory, which is why cache use can dramatically increase the kernel runtime. Moreover, excessive caching can require more than the available GPU heap memory and prevent the program from being run at all. Since memory size and bandwidth are the primary bottlenecks, most of our optimizations aim to minimize global memory accesses.
+Our experimental results in Section~\ref{sec:eval} demonstrate that significant GPU-specific and AD-specific optimizations are necessary to run the reverse pass in a reasonable time.
+%overhead compared with the primal function that is low enough to be usable in scientific simulations.
+Below, we briefly explain the most important optimizations that we use for this work.
+
+\paragraph{\textbf{Alias Analysis}}
+Alias analysis~\cite[Ch.~12]{AhoLaSe06} is fundamental to Enzyme's ability to determine whether an instruction can be recomputed or must be cached.
+Instructions that do not access memory are trivially recomputable.
+%At minimum Enzyme checks if an instruction can access memory and if not the instruction is trivially recomputable. 
+For instructions that read memory, Enzyme uses LLVM's alias analysis pipeline to determine whether the value is overwritten before it is required in the reverse pass.
+%More deeply, for all loads in the forward pass Enzyme uses LLVM's internal Alias Analysis pipeline to deduce whether the memory read by that load could be overwritten.
+%This analysis requires comparing the aliasing behavior of all functions that follow the load in the load's parent function, as well as any instructions that may follow that load in any functions that call the load's parent function.
+%
+Depending on the quality of available alias information, for example, from types and restrict qualifiers, this can reduce the number of cached values \change{significantly}.
+%This is quite effective at reducing the amount of values that need to be cached, if the results of Alias Analysis are strong but rather problematic if Alias Analysis results are weak. 
+However, if there are potentially aliasing pointers (e.g. two plain pointer arguments), Enzyme is required to assume that writes to one might modify any element read through the other.
+In the worst case, this uncertainty can force Enzyme to cache all read accesses of a constant input array.
+%\footnote{Notably this lack of Alias Analysis also hurts the regular forward pass without differentiation since it means that optimizations such as vectorization cannot be safely performed if the input and output alias.}
+%For example, a code with an input and output array that are marked as potentially aliasing may have to unnecessarily cache all loads from the input array since Enzyme will have to assume that it may be overwritten by the write to store.
+
+%In addition to remedying function parameters that unfortunately lack the correct aliasing parameters
+%\todo{Johannes, we could say tools like HTO could derive for us :D, but real reason why we dont auto derive is because enzyme_autodiff isnt seen as a callsite with params derived, but merely a fn pointer passed to another fn}
+%, we also found several parts of LLVM's existing Alias Analysis that were insufficient. 
+In our analysis, we found that common math functions, such as \lstinline|cos|, are seen as being able to write to \emph{any} global memory and thus potentially overwrite most memory locations.
+LLVM models \texttt{libm} implementations of these functions as \texttt{writeonly} because they can set the global \texttt{errno} variable, assuming the user does not explicitly disable this potential side effect.
+%, for example, through \texttt{-fno-math-errno}, which is part of \texttt{-ffast-math}.
+The situation is different for CUDA code since there is no \texttt{libm} available.
+Instead, Clang will effectively map all available math functions onto respective CUDA builtin functions, for example, \texttt{\_\_nv\_cos}.
+Since the LLVM analyses and optimizations are not aware of these CUDA-specific functions, they are conservatively assumed to read and write arbitrary memory.
+For the sake of Enzyme's cache,  we allow alias analysis to assume that common math functions do not act as barriers to recomputation.
+
+Another significant barrier to performance is the aliasing behavior of \texttt{sync\_threads}. In order to ensure correctness for multithreaded GPU programs, LLVM's aliasing properties of architecture-specific \texttt{barrier} intrinsics assume that \texttt{barrier} can read and write to most memory locations. For the same reasons as above, this assumption forces Enzyme to unnecessarily cache values. We extend Enzyme to define a \texttt{barrier} instruction \texttt{S} as having the aliasing behavior of all instructions that precede \texttt{S} until it reaches another \texttt{barrier} or the start of the kernel being differentiated.
+
+
+\begin{figure*}
+    \centering
+ \begin{tabular}{c|c|c}
+\textbf{(a)}&\textbf{(b)}&\textbf{(c)}\\
+\begin{minipage}[T]{0.2\linewidth}
+\begin{minted}[fontsize=\small, escapeinside=||]{cpp}
+use(x[0] + y[0]);
+overwrite(x, y);
+
+
+
+|\;|
+\end{minted}
+\end{minipage}&\begin{minipage}[T]{0.33\linewidth}
+\begin{minted}[fontsize=\small]{cpp}
+double x_cache = x[0];
+double y_cache = y[0];
+use(x[0] + y[0]);
+overwrite(x, y);
+diffe_overwrite(x, y);
+diffe_use(x_cache[i] + y_cache[i]);
+\end{minted}
+\end{minipage}& \begin{minipage}[T]{0.37\linewidth}
+\begin{minted}[fontsize=\small, escapeinside=||]{cpp}
+double sum_cache = x[0] + y[0];
+use(x[0] + y[0]);
+overwrite(x, y);
+diffe_overwrite(x, y);
+diffe_use(sum_cache);
+|\;|
+\end{minted}
+\end{minipage}
+\end{tabular}
+    \caption{(a) A sample program that loads two variables \texttt{x} and \texttt{y} and then perform some computation with the result. These variables are subsequently overwritten and thus would require caching to be available in the reverse pass. A naive cache algorithm would produce the code in (b) in which both overwritten memory locations \texttt{x} and \texttt{y} are cached. As shown in (c), one could instead cache the sum since neither \texttt{x} nor \texttt{y} is individually necessary to compute the gradient.}
+    \label{fig:new_cache}
+\end{figure*}
+
+\paragraph{\textbf{Loop-Invariant Cache}}
+Enzyme caches the results of individual instructions rather than memory ranges. This approach can be more efficient for general programs, especially if memory access patterns are sparse. This can be problematic, however, in cases where many instructions load from the same piece of memory that must be cached. Enzyme relies on LLVM-based optimizations such as \change{common sub-expression} elimination (CSE) and loop-invariant-code-motion (LICM)~\cite[Sec.~13.2]{Muchnick97} to remove such equivalent accesses in the original program and subsequently prevent unnecessary caching.  In several cases, however, the LLVM optimizations may not be legal, or even beneficial for the original code, but would otherwise result in a large amount of unnecessary caching.
+
+For example, consider the program shown in Figure~\ref{fig:cache_licm}(a). The load cannot be optimized by LICM since it depends on the innermost iteration variable \texttt{j}. If the load is required for a reverse-pass computation, Enzyme must cache every result of the load as shown in Figure \ref{fig:cache_licm}(b), resulting in an $\Theta(NM)$ cache. However, we notice that the array is only potentially overwritten outside of the loop nest, and we could have instead chosen to simply cache the total size of the memory used ($\Theta(M)$) as in Figure~\ref{fig:cache_licm}(c). This cache optimization detects scenarios where it is legal and profitable to cache loads from a parent loop nest, thereby reducing the total cache.
+
+\paragraph{\textbf{Equivalent Load Cache}}
+Similar to how the loop-invariant cache optimization remedies issues where LICM may not optimize the initial code to reduce the cache, we also present a cache-variant of \change{common sub-expression} elimination. Consider two loops that both load from an array. Because the loops are not fused, these loads cannot be deduplicated by \change{common sub-expression} elimination. Consequently, Enzyme would have to create two separate caches. However, since both of these load from the same memory without a potential write in between, we can instead cache the array once and use it during the reverse pass in both places. 
+% Figure \ref{fig:cache_cse}(c).
+% Much in the same way that the Loop-Invariant Cache optimization remedies issues where LICM may not optimize the initial code to reduce the cache, we also present an cache-variant of common sub-expression elimination. In Figure \ref{fig:cache_cse}(a), we have two loops which both load from \texttt{array}. Because the loops are not fused, these loads cannot deduplicated by common subexpression elimination. As a consequence Enzyme would have to create two separate caches \texttt{cache1} and \texttt{cache2} as is shown in Figure \ref{fig:cache_cse}(b). However, as both of these load from the same memory without a potential write in between we can instead cache the array once and use it in both reverse passes as shown in 
+% Figure \ref{fig:cache_cse}(c).
+
+% \begin{figure*}
+%     \centering
+%  \begin{tabular}{c|c|c}
+% \textbf{(a)}&\textbf{(b)}&\textbf{(c)}\\
+% \begin{minipage}[T]{0.26\linewidth}
+% \begin{minted}[fontsize=\small]{cpp}
+% for (int i=0; i<N; i++) {
+%     use1(array[i]);
+% }
+% for (int i=0; i<N; i++) {
+%     use2(array[i]);
+% }
+% overwrite(array);
+% \end{minted}
+% \end{minipage}& \begin{minipage}[T]{0.34\linewidth}
+% \begin{minted}[fontsize=\small]{cpp}
+% double *cache1 = new double[N];
+% for (int i=0; i<N; i++) {
+%     cache1[i] = array[i];
+%     use1(array[i]);
+% }
+% double *cache2 = new double[N];
+% for (int i=0; i<N; i++) {
+%     cache2[i] = array[i];
+%     use2(array[i]);
+% }
+% overwrite(array);
+% diffe_overwrite(array);
+% for (int i=N-1; i>=0; i--) {
+%     diffe_use2(cache2[i]);
+% }
+% delete[] cache2;
+% for (int i=N-1; i>=0; i--) {
+%     diffe_use1(cache1[i]);
+% }
+% delete[] cache1;
+% \end{minted}
+% \end{minipage}& \begin{minipage}[T]{0.34\linewidth}
+% \begin{minted}[fontsize=\small]{cpp}
+% double *cache = new double[N];
+% for (int i=0; i<N; i++) {
+%     cache[i] = array[i];
+%     use1(array[i]);
+% }
+% for (int i=0; i<N; i++) {
+%     use2(array[i]);
+% }
+% overwrite(array);
+% diffe_overwrite(array);
+% for (int i=N-1; i>=0; i--) {
+%     diffe_use2(cache[i]);
+% }
+% for (int i=N-1; i>=0; i--) {
+%     diffe_use1(cache[i]);
+% }
+% delete[] cache;
+% \end{minted}
+% \end{minipage}
+% \end{tabular}
+
+%     \caption{Cache CSE}
+%     \label{fig:cache_cse}
+% \end{figure*}
+
+\paragraph{\textbf{Cache Forwarding}}
+ GPU programs commonly use shared memory as a cache for global memory when it may be used by many threads. This is highly beneficial because accesses from shared memory are much faster than loads from global memory. If that shared memory is overwritten, however, it may need to be cached for the reverse pass. The original global memory it is derived from, however, may not have been overwritten. In this case, instead of allocating a cache to preserve the overwritten values in shared memory, we can simply reload the underlying memory the shared memory is acting as a cache for, preventing an unnecessary allocation of global memory for the cache. An additional though yet unimplemented extension to this optimization is to reuse the faster shared memory as a cache for the reverse pass rather than having to load from the slower global memory.
+
+% \todo{describe the code}
+
+% \begin{figure*}
+%     \centering
+%  \begin{tabular}{c|c|c}
+% \textbf{(a)}&\textbf{(b)}&\textbf{(c)}\\
+% \begin{minipage}[T]{0.33\linewidth}
+% \begin{minted}[fontsize=\small]{cpp}
+% double *fast_mem = allocate_fast();
+
+% for (int i=0; i<N; i++) {
+%     for (int j=0; j<M; j++) {
+%         fast_mem[j] = slow_mem[i*M+j];
+%     }
+%     for (int j=0; j<M; j++) {
+%         use(fast_mem[j]);
+%         ...
+%     }
+% }
+% overwrite(array);
+% \end{minted}
+% \end{minipage}& \begin{minipage}[T]{0.33\linewidth}
+% \begin{minted}[fontsize=\small]{cpp}
+% double *fast_mem = allocate_fast();
+% double *cache = new double[N*M]
+% for (int i=0; i<N; i++) {
+%     for (int j=0; j<M; j++) {
+%         fast_mem[j] = slow_mem[i*M+j];
+%         cache[M*i+j] = slow_mem[i*M+j];
+%     }
+%     for (int j=0; j<M; j++) {
+%         use(fast_mem[j]);
+%         ...
+%     }
+% }
+% overwrite(array);
+% diffe_overwrite(array);
+% for (int i=N-1; i>=0; i--) {
+%     for (int j=M-1; j>=0; j--) {
+%         ...
+%         diffe_use(cache[i*M+j]);
+%     }
+%     ...
+% }
+% delete[] cache;
+% \end{minted}
+% \end{minipage}& \begin{minipage}[T]{0.33\linewidth}
+% \begin{minted}[fontsize=\small]{cpp}
+% double *fast_mem = allocate_fast();
+% for (int i=0; i<N; i++) {
+%     for (int j=0; j<M; j++) {
+%         fast_mem[j] = slow_mem[i*M+j];
+%     }
+%     for (int j=0; j<M; j++) {
+%         use(fast_mem[j]);
+%         ...
+%     }
+% }
+% overwrite(array);
+% diffe_overwrite(array);
+% for (int i=N-1; i>=0; i--) {
+%     for (int j=M-1; j>=0; j--) {
+%         ...
+%         diffe_use(slow_mem[i*M+j]);
+%     }
+%     ...
+% }
+% delete[] cache;
+% \end{minted}
+% \end{minipage}
+% \end{tabular}
+
+%     \caption{Cache Forwarding}
+%     \label{fig:cache_cse}
+% \end{figure*}
+
+\paragraph{\textbf{PHI Unwrapping}}
+In addition to load and call instructions that may not be recomputable, Enzyme may also have to cache PHI instructions. PHI instructions occur when the current basic block has multiple potential predecessors. The PHI instruction forwards a value from the actual predecessor that just branched to the current block, preventing recomputation and requiring caching.
+
+This optimization aims to compute an equivalent value to the PHI by determining a condition \texttt{C} that determines the actual predecessor of the basic block. The PHI node can then be recomputed by recomputing the condition \texttt{C} and selecting the corresponding value the PHI node would have when coming from the predecessor corresponding to \texttt{C}. Computing \texttt{C} can be done by traversing the function's control-flow graph and attempting to identify a chain of conditions to branch instructions that lead to the PHI node from a given predecessor. This cannot always be done at compile-time but nevertheless allows Enzyme to avoid caching many PHI instructions in unnecessary allocations.
+
+\paragraph{\textbf{Allocation Optimizations}}
+\change{Enzyme performs most cache allocations on the heap, backed by global memory}. By running the heap-to-stack optimization pass, we can lower a heap allocation into a stack allocation and subsequently open the \change{possibility} of promoting the stack allocation to individual registers. Additionally, Enzyme may make several separate allocations for different instruction caches. A function call (such as a call to \texttt{malloc} or \texttt{free}) is expensive on the GPU. We provide a further optimization that coalesces several individual allocations into a larger allocation, thereby reducing the overhead of allocating cache memory. 
+
+\paragraph{\textbf{Recompute versus Cache Heuristics}}
+When Enzyme deduces that a value \texttt{V} is required in the reverse pass, Enzyme explicitly caches all loads, calls, and PHI instructions necessary to compute \texttt{V}. We extend Enzyme with a heuristic to instead directly cache the value being recomputed, rather than the loads necessary to recompute it, if we predict that this will result in a smaller amount of cached memory as shown in Figure \ref{fig:new_cache}. We also extend this heuristic to find the minimal set of values to cache by determining a minimum branch cut between values that must be cached and instructions that require values from the forward pass. In general, solving for the \textit{optimal} cache size is difficult to do at compile time because many relevant parameters such as loop bounds may not be known.
+
+
+\paragraph{\textbf{Loop Bound Calculation}}
+Enzyme frequently computes the bounds of loops, for example, to determine the size of cache space allocations or to index into the cache. Enzyme piggybacks on top of LLVM's existing scalar evolution analysis to attempt to statically deduce the size of loops. This allows Enzyme to allocate the required cache memory in advance. However, not all loops have statically known bounds. For these dynamically sized loops, Enzyme must continuously reallocate the cache inside the loop to ensure sufficient memory exists to contain the values from all iterations. When the total number of iterations is not statically analyzable, Enzyme  adds a variable to cache the count for use in index computations.
+
+Consequently, it is desirable for Enzyme to statically deduce the bounds of loops. However, LLVM's analysis passes must be conservative and account for behavior like potential integer wraparound, causing hard-to-analyze bounds on seemingly simple loops.
+Enzyme extends LLVM's scalar evolution to take advantage of a key fact: if one is indeed evaluating code in the reverse pass, none of the forward-pass loops could have been infinite loops. When computing bounds for cache sizes, we can consequently add the extra fact that the loop is not infinite, allowing Enzyme to statically compute bounds of additional loops.
+
+\paragraph{\textbf{Register Locality}}
+In contrast to virtual instruction sets like LLVM, physical architectures have a fixed set of registers available for computation. To map a computation onto a physical instruction set such as that used by a GPU, one must perform register allocation to map the virtual registers used by LLVM to a fixed set of physical registers. When there are insufficient registers available to represent all virtual registers, the compiler must spill the instruction into a stack allocation (which on NVIDIA GPUs spills to the L1 cache and subsequently global memory). \change{Therefore}, it is crucial for Enzyme to maximize the locality of virtual register uses to avoid spilling. By default, Enzyme reuses a value from the forward pass if it dominates its potential use in the reverse pass, because it will always be available without an explicit allocation.
+This scheme is problematic for the GPU, however, because it may increase the lifetime of registers, leading to spilling and increased global memory use.
+
+To remedy this situation, Enzyme will choose to recompute loads from shared memory if there is register pressure. While a load from shared memory is certainly slower than reusing a register, it is still faster than a load from global memory in a potential spill. 
+
+\paragraph{\textbf{Inlining}}
+Choosing to inline or call a function can have substantial performance implications. Inlining a function may be beneficial because it may allow Enzyme to combine loads or otherwise reduce redundant cache allocations through the loop-invariant cache or equivalent load cache optimizations. On the other hand, by calling a function rather than inlining it, Enzyme will explicitly recompute data structures generated by the function being called in the reverse pass. This action can increase register locality and may require fewer instructions to recompute PHI nodes since there are fewer potential predecessors.
+
+% \subheading{Alloca Index Cache}
+
+% \subheading{Activity Analysis}
+
+% \subheading{Fast Reductions}
+
+% \subheading{Contextual Recomputation}
+% E.g. legal to recompute at this location [as opposed to generally]
+% Helpful for static sizing, etc
+
+% \subheading{Global Lowering}
+% less relevant to CUDA

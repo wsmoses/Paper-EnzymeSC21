@@ -1,0 +1,56 @@
+\documentclass[crop,tikz]{standalone}
+
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+
+\begin{document}
+\begin{tikzpicture}
+    \begin{axis}[
+        ybar=10pt,
+        symbolic x coords={Runtime},
+        ylabel={Runtime in seconds},
+        xlabel={},
+        bar width=15pt,
+        xtick=data,
+        nodes near coords,
+        nodes near coords align={vertical},
+        legend style={
+            area legend,
+            at={(0.5,-0.15)},
+            anchor=north,
+            legend columns=2}
+    ]
+    % Forward
+    
+    % \addplot coordinates{(Runtime, 0.025)};
+    \addplot coordinates{(Runtime, 1)};
+    
+    % AD -- Optimized
+    % \addplot coordinates{(Runtime, 0.1098)};
+    \addplot coordinates{(Runtime, 4.392)};
+    
+    %  AD -- No Cache
+    % \addplot coordinates{(Runtime, 8.5916)};
+    \addplot coordinates{(Runtime, 343.664)};
+    
+    % AD -- w/NewCache
+    % \addplot coordinates{(Runtime, 31.889)};
+    \addplot coordinates{(Runtime, 1275.56)};
+    
+    % AD -- NoInline
+    \addplot coordinates{(Runtime, 6372.24)};
+    
+    % Forward -- NoPreopt
+    % \addplot coordinates{(Runtime, 0.282)};
+    
+    % AD -- NoPreopt
+% \node[pin={[pin distance=1cm,pin edge={<-,>=stealth'},shift={(-1.2cm,0.5cm)}]
+% Tasmania entry to NEM}] at (axis cs:5,190) {};
+
+    % \addplot [nodes near coords] coordinates{(Runtime, 0)};
+    % \node at (axis cs:Runtime, 0) {Y};
+        
+    % \legend{Forward, AD--Optimized, AD--No Cache, AD--w/NewCache, AD--NoInline, Forward--NoPreopt, AD--NoPreopt }
+    \end{axis}
+\end{tikzpicture}
+\end{document}

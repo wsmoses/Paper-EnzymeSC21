@@ -1,0 +1,15 @@
+\section{Related Work}
+\label{sec:related}
+
+AD tools that differentiate programs at runtime are often relatively straightforward to develop using, for example, operator overloading in C++~\cite{griewank1996algorithm,lotz2011dco,Walther2012Gsw,bell2012cppad,hogan2014fast,sagebaum2019high}. Unfortunately, in reverse mode, they generally produce a large {\em tape} to store operations and intermediate values for subsequent reverse differentiation, which causes challenges with their memory footprint in real-world applications.
+
+
+A more efficient, but more challenging type of AD uses a compile-time transformation to translate the source code for a given function evaluation
+into the derivative function evaluation. Several such tools have been developed for Fortran and C including ADIFOR~\cite{bischof1996adifor}, Tapenade~\cite{TapenadeRef13}, TAF~\cite{GIERING20051345}, OpenAD~\cite{Utke2008OAM}, ADIC~\cite{bischof1997adic}, and ADIC2~\cite{NARAYANAN20101845}.
+Unlike these tools, Enzyme is based on the LLVM compiler instead of an AD-specific framework and emits gradient programs in LLVM IR instead of the original source language. This approach allows Enzyme to benefit from the language support, optimizations, and maturity of the LLVM platform.
+
+For differentiating codes running in distributed-memory environments, 
+libraries such as the \emph{Adjoinable MPI} library have been developed that reverse the nonblocking communication patterns in the original code~\cite{5161165,CARDESA2020101155}. Other studies have presented reverse-mode AD for OpenMP codes~\cite{Bischof2008PRM,Bucker2001BTA,Bucker2002ELS,forster2014algorithmic,doi:10.1177/1094342017712060,tfmad} or hybrid OpenMP/\-MPI codes~\cite{Giering2005TLa}.
+Some studies~\cite{Giering2005TLa, Bischof2008PRM} have identified that reverse-mode AD creates potential write races on multicore CPU programs and suggest atomic updates or privatization as solutions.
+
+Derivatives can be computed on GPUs for programs written in certain \change{domain-specific} languages (DSLs) such as PyTorch~\cite{paszke2017automatic},  Halide~\cite{halide}, TensorFlow~\cite{tensorflow2015-whitepaper}, or JAX~\cite{bradbury2020jax}. The AD approach used in these languages uses the structure of, and high-level knowledge about, programs that can be written in those DSLs and does not easily generalize to arbitrary programs written in a general-purpose language such as C or CUDA. Previous works have discussed AD or symbolic differentiation for programs that call CUDA kernels~\cite{Grabner2008ADf,gremse2016gpu}. Such works, however, do not present differentiation of the kernels themselves or else use the forward mode of AD~\cite{blhdorn2020automat, revels2018-mixedmode}.

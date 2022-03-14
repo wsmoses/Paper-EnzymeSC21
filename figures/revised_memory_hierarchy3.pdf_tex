@@ -1,0 +1,81 @@
+%% Creator: Inkscape 1.1 (c68e22c387, 2021-05-23), www.inkscape.org
+%% PDF/EPS/PS + LaTeX output extension by Johan Engelen, 2010
+%% Accompanies image file 'revised_memory_hierarchy3.pdf' (pdf, eps, ps)
+%%
+%% To include the image in your LaTeX document, write
+%%   \input{<filename>.pdf_tex}
+%%  instead of
+%%   \includegraphics{<filename>.pdf}
+%% To scale the image, write
+%%   \def\svgwidth{<desired width>}
+%%   \input{<filename>.pdf_tex}
+%%  instead of
+%%   \includegraphics[width=<desired width>]{<filename>.pdf}
+%%
+%% Images with a different path to the parent latex file can
+%% be accessed with the `import' package (which may need to be
+%% installed) using
+%%   \usepackage{import}
+%% in the preamble, and then including the image with
+%%   \import{<path to file>}{<filename>.pdf_tex}
+%% Alternatively, one can specify
+%%   \graphicspath{{<path to file>/}}
+%% 
+%% For more information, please see info/svg-inkscape on CTAN:
+%%   http://tug.ctan.org/tex-archive/info/svg-inkscape
+%%
+\begingroup%
+  \makeatletter%
+  \providecommand\color[2][]{%
+    \errmessage{(Inkscape) Color is used for the text in Inkscape, but the package 'color.sty' is not loaded}%
+    \renewcommand\color[2][]{}%
+  }%
+  \providecommand\transparent[1]{%
+    \errmessage{(Inkscape) Transparency is used (non-zero) for the text in Inkscape, but the package 'transparent.sty' is not loaded}%
+    \renewcommand\transparent[1]{}%
+  }%
+  \providecommand\rotatebox[2]{#2}%
+  \newcommand*\fsize{\dimexpr\f@size pt\relax}%
+  \newcommand*\lineheight[1]{\fontsize{\fsize}{#1\fsize}\selectfont}%
+  \ifx\svgwidth\undefined%
+    \setlength{\unitlength}{335.43899718bp}%
+    \ifx\svgscale\undefined%
+      \relax%
+    \else%
+      \setlength{\unitlength}{\unitlength * \real{\svgscale}}%
+    \fi%
+  \else%
+    \setlength{\unitlength}{\svgwidth}%
+  \fi%
+  \global\let\svgwidth\undefined%
+  \global\let\svgscale\undefined%
+  \makeatother%
+  \begin{picture}(1,0.69211428)%
+    \lineheight{1}%
+    \setlength\tabcolsep{0pt}%
+    \put(0,0){\includegraphics[width=\unitlength,page=1]{revised_memory_hierarchy3.pdf}}%
+    \put(0.04849544,0.33933863){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Kernel\end{tabular}}}}}%
+    \put(0.27319125,0.16909101){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Local\end{tabular}}}}}%
+    \put(0.26871949,0.52746544){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Global\end{tabular}}}}}%
+    \put(0.50742256,0.14001322){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}L1/TEX\\Cache\end{tabular}}}}}%
+    \put(0.50783518,0.53985298){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}AD Hit Rate:\\28.10\%\end{tabular}}}}}%
+    \put(0.71128259,0.14030798){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}L2 Cache\end{tabular}}}}}%
+    \put(0.71128259,0.53985298){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}AD Hit Rate:\\42.53\%\end{tabular}}}}}%
+    \put(0.96863568,0.18509408){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Device Memory\end{tabular}}}}}%
+    \put(0.9686732,0.53138505){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}System Memory\end{tabular}}}}}%
+    \put(0.10497589,0.6163669){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\1.54 M Inst\\AD:\\2.31 M Inst\end{tabular}}}}}%
+    \put(0.10497589,0.08936347){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\0.00 Inst\\AD:\\0.00 Inst\end{tabular}}}}}%
+    \put(0.34114642,0.41299283){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\384.4 K Req\\AD:\\538.21 K Req\end{tabular}}}}}%
+    \put(0.34114642,0.61909022){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\1.16 M Req\\AD:\\1.77 M Req\end{tabular}}}}}%
+    \put(0.34114642,0.08019436){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\0.00 Req\\AD:\\0.00 Req\end{tabular}}}}}%
+    \put(0.34114642,0.24225261){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\0.00 Req\\AD:\\0.00 Req\end{tabular}}}}}%
+    \put(0.50783525,0.33738266){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd Hit Rate:\\21.85\%\end{tabular}}}}}%
+    \put(0.61380218,0.19224732){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd: 109.42 MB\\AD: 153.20 MB\end{tabular}}}}}%
+    \put(0.61380218,0.50296765){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd: 174.60 MB\\AD: 255.22 MB\end{tabular}}}}}%
+    \put(0.71128259,0.33738266){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd Hit Rate:\\39.85\%\end{tabular}}}}}%
+    \put(0.80568507,0.61668491){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\0.00 B\\AD:\\0.00 B\end{tabular}}}}}%
+    \put(0.80568507,0.4749768){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\0.00 B\\AD:\\0.00 B\end{tabular}}}}}%
+    \put(0.80568507,0.08116822){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\98.78 MB\\AD:\\125.93 MB\end{tabular}}}}}%
+    \put(0.80568507,0.28161759){\color[rgb]{0,0,0}\rotatebox{90}{\makebox(0,0)[t]{\lineheight{1.25}\smash{\begin{tabular}[t]{c}Fwd:\\171.01 MB\\AD:\\236.24 MB\end{tabular}}}}}%
+  \end{picture}%
+\endgroup%

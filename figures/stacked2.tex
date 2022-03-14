@@ -1,0 +1,214 @@
+\documentclass{standalone}
+\usepackage{pgfplots}
+\usepackage{pgfkeys}
+\usepackage{ifthen}
+\usepackage{pgfplotstable}
+\usetikzlibrary{arrows,positioning}
+\usepgfplotslibrary{colorbrewer}
+\pgfplotsset{compat=1.16}
+
+\pgfplotstableread[col sep=comma]{
+AD, CacheLICM, Inlining, PreOpt
+4.7,   9.5,  6372.2, 15000
+}\RSBench
+
+\pgfplotstableread[col sep=comma]{
+% AD, Templating, PHI, AliasAnalysis, Recompute, PreOptimization
+% 3.2, 9.6, 14.5, 47.4, 95.8, 15000
+AD, Templating, PHI,LoopBound, PreOptimization
+3.2, 9.5, 16.3, 25.9, 15000
+}\XSBench
+% 3.16, 9.61, 14.47, 47.40, 95.75, 15000
+
+\pgfplotstableread[col sep=comma]{
+AD, Allocator, Recompute, InlineCacheABI
+6.4, 8.7, 19.87, 15000
+}\LBM
+%6.39, 8.74, 19.87, 15000
+
+
+\pgfplotstableread[col sep=comma]{
+AD, SpecPHI, PreOptimization
+2.0, 2.4, 2979.1
+}\LULESH
+
+\pgfplotstableread[col sep=comma]{
+AD, Unrolling, MallocCoalescing, PreOptimization
+17.8, 116.6, 1378.3, 15000
+}\DGCUDA
+% 17.85, 116.63, 1378.32, 15000
+
+\pgfplotstableread[col sep=comma]{
+AD, Unrolling
+5.4, 15000
+}\DGROCM
+
+\pgfplotsset{
+    every axis/.style={
+        % xbar,
+        xbar stacked,
+        xmode = log,
+        point meta=rawx,
+        bar shift auto=0pt,
+        % bar width={1/2},
+        xlabel={Overhead above Forward Pass},
+        bar width={1/8},
+        ymin=0.9,ymax=7,
+        xmin=1,xmax=15000,
+        ytick={1,2,3,4,5,6,7},
+        yticklabels={XSBench, RSBench, LULESH, LBM, DG (CUDA), DG (ROCm)},
+        xtick={1,10,100,1000,14000},
+        xticklabels={Forward (1x),10x,100x,1000x,OOM},
+        height=7cm, scale only axis,
+        width=22cm,
+        y tick label as interval,
+        nodes near coords align={horizontal},
+        ymajorgrids
+    },
+        /pgfplots/bar cycle list/.style={/pgfplots/cycle list={
+            {Set1-A,fill=Set1-A!50!white,mark=none},
+            {Set1-B,fill=Set1-B!50!white,mark=none},
+            {Set1-C,fill=Set1-C!50!white,mark=none},
+            {Set1-D,fill=Set1-D!50!white,mark=none},
+            {Set1-E,fill=Set1-E!50!white,mark=none},
+            {Set1-F,fill=Set1-F!50!white,mark=none},
+            {Set1-G,fill=Set1-G!50!white,mark=none},
+            {Set1-H,fill=Set1-H!50!white,mark=none},
+            },
+            },
+}
+
+\begin{document}%
+\begin{tikzpicture}
+
+\def\x#1#2#3#4{%
+  \begingroup\edef\z{\endgroup\noexpand#1{#2}{#3}{#4}}\z
+}
+
+\newcommand{\makenode}[3]{%
+
+ \ifthenelse{\equal{\detokenize{#1}}{\detokenize{15000}}}{
+     \node[inner sep=-2,outer sep=0] (#3) at (axis cs:#1*.92, #2) {$\mathbin{\tikz [x=3.4ex,y=3.4ex,line width=1.2ex, red] \draw (0,0) -- (1,1) (0,1) -- (1,0);}$};
+}{
+ \node[inner sep=0,outer sep=0] (#3) at (axis cs:#1, #2) {o};
+ 
+\ifthenelse{\equal{\detokenize{#1}}{2.0}}{
+
+ \node[inner sep=0,outer sep=0, below left=1em and 0.5em of #3, anchor=center] at (axis cs:#1, #2) {\small $#1\times$};
+ 
+}{
+ \ifthenelse{\equal{\detokenize{#1}}{2.4}}{
+ 
+ \node[inner sep=0,outer sep=0, below right=1em and 0.7em of #3, anchor=center] at (axis cs:#1, #2) {\small $#1\times$};
+ 
+}{
+
+ \node[inner sep=0,outer sep=0, below=1em of #3, anchor=center] at (axis cs:#1, #2) {\small $#1\times$};
+ 
+}
+}
+
+ }
+}
+
+\newcommand{\makearrow}[3]{%
+\if{#2}{AD}
+\else
+
+ \ifthenelse{\equal{\detokenize{#3}}{\detokenize{Allocator}}}{
+\draw [-stealth, ultra thick](#1) -- node [above left=0.9em and 0.6em,midway, anchor=center] {#3} (#2);
+}{
+\ifthenelse{\equal{\detokenize{#3}}{\detokenize{Recompute}}}{
+\draw [-stealth, ultra thick](#1) -- node [above right=0.8em and 0.6em,midway, anchor=center] {#3} (#2);
+}{
+ \ifthenelse{\equal{\detokenize{#3}}{\detokenize{PHI}}}{
+\draw [-stealth, ultra thick](#1) -- node [above left=0.9em and 0.3em,midway, anchor=center] {#3} (#2);
+}{
+ \ifthenelse{\equal{\detokenize{#3}}{\detokenize{LoopBound}}}{
+\draw [-stealth, ultra thick](#1) -- node [above right=0.8em and 0.4em,midway, anchor=center] {#3} (#2);
+}{
+\draw [-stealth, ultra thick](#1) -- node [above=0.8em,midway, anchor=center] {#3} (#2);
+}
+}
+}
+}
+\fi
+}
+
+\newcommand{\parsetable}[3]{
+\pgfplotstableforeachcolumn#1\as\col{
+\pgfplotstableforeachcolumnelement{\col}\of#1\as\cell{%
+\x\makenode{\cell}{0.5+#3}{#2\pgfplotstablecol}
+% \x\makenode{\cell}{1/7+\pgfplotstablecol/7+#3}{#2\pgfplotstablecol}
+}
+}
+
+% \x\makearrow{0#2}{1#2}{}
+}
+
+\begin{axis}
+
+ 
+\parsetable{\XSBench}{XSBench}{1}
+\parsetable{\RSBench}{RSBench}{2}
+\parsetable{\LULESH}{LULESH}{3}
+\parsetable{\LBM}{LBM}{4}
+\parsetable{\DGCUDA}{DGCUDA}{5}
+\parsetable{\DGROCM}{DGROCM}{6}
+
+\newcommand{\forward}[1]{
+% \node[inner sep=0,outer sep=0] (FW#1) at (axis cs:1, 0.45+#1) {o};
+% \node[inner sep=0,outer sep=0] at (axis cs:1, 0.7+#1) {\small Forward};
+}
+\forward{1}
+\forward{2}
+\forward{3}
+\forward{4}
+\forward{5}
+\forward{6}
+% \parsetable{\RSBench}{RSBench}{5}
+
+\end{axis}
+
+\newcommand{\sub}[1]{\pgfmathparse{int(#1-1)}\pgfmathresult}
+
+
+\newcommand{\conditional}[2]{%
+\ifthenelse{\equal{\detokenize{#1}}{\detokenize{AD}}}{}{#2}
+}
+
+\newcommand{\makearrows}[2]{
+\pgfplotstableforeachcolumn#1\as\col{
+\pgfplotstableforeachcolumnelement{\col}\of#1\as\cell{%
+\expandafter\conditional\expandafter{\col}{
+\pgfmathparse{\pgfplotstablecol-1}
+\x\makearrow{#2\pgfplotstablecol}{#2\pgfmathresult}{\col}
+}
+}
+}
+}
+
+\makearrows{\DGROCM}{DGROCM}
+\makearrows{\DGCUDA}{DGCUDA}
+\makearrows{\LBM}{LBM}
+\makearrows{\LULESH}{LULESH}
+\makearrows{\RSBench}{RSBench}
+\makearrows{\XSBench}{XSBench}
+
+
+
+
+\end{tikzpicture}
+\end{document}
+
+% % and look like this
+% \begin{tikzpicture}
+% \foreach \row in {0,1} {
+%   \pgfplotstablegetelem{\row}{x}\of\loadedtable
+%   \let\x=\pgfplotsretval
+%   \pgfplotstablegetelem{\row}{y}\of\loadedtable
+%   \let\y=\pgfplotsretval
+%   \draw (0,0) -- (\x,\y);
+% }
+% \end{tikzpicture}
+% \end{document}

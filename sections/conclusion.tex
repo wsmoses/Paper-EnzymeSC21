@@ -1,0 +1,24 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+By extending Enzyme, an AD tool for LLVM, we have created the first AD tool capable of generating gradients of GPU kernels without rewriting entire applications with a differentiable DSL. Reverse-mode differentiation of GPU kernels adds several challenges including potential data races caused by the GPU's parallelism and the GPU's complex performance characteristics. We demonstrate an algorithm for differentiating GPU-based parallel control flow and other intrinsics that ensures the correctness of the resultant gradients. To maximize performance of the generated gradients, we introduce several novel AD and GPU-specific optimizations. Through various ablation analyses, we show how without these optimizations reverse-mode GPU AD is intractable in practice.  We demonstrate reasonable performance and scalability on several applications relevant to the HPC community.
+
+
+\begin{figure}
+    \centering
+    \begin{tabular}{l|r|r|r}
+         Test & Forward & AD & Overhead\\\hline
+         LBM & 1.54 & 5.65 & 4.32$\times$\\
+         LULESH & 8.34 & 23.82 & 2.86$\times$\\
+         RSBench & 14.99 & 33.29 & 2.22$\times$\\
+         XSBench & 15.9 & 23.5 & 1.48$\times$\\
+         \hline
+         Julia DG CUDA & 0.50 & 3.41 & 6.82$\times$\\
+         Julia DG AMD & 1.12 & 2.56 & 2.29$\times$\\
+    \end{tabular}
+    \caption{\change{Compile time in seconds of the source file with and without derivatives.}}
+    \label{fig:comptime}
+\end{figure}
+
+%\subsection{Future work}
+\change{There exist} several avenues for future work. Many of the optimizations described in Section~\ref{sec:opt}, especially those involving caching, could make better use of shared memory, when available. For example, with rare exception, Enzyme currently maintains the GPU schedule described in the forward pass for use in the reverse. One could imagine allowing Enzyme to reschedule a kernel in such a way that minimizes potential races and therefore allows better performance. Moreover, Enzyme currently identifies constant shared-memory indices as the only scenarios where it can perform a reduction rather than falling back to an atomic increment. Extending Enzyme to more aggressively identify locations where it can perform a reduction rather than atomics can result in additional performance boosts, especially in kernels that, like the DG kernel, make heavy use of shared memory (see Section~\ref{par:dg}). Extending Enzyme to support Forward and Mixed-Mode \cite{besard2018juliagpu} AD may provide potential performance boosts by allowing Enzyme to choose the differentiation algorithm expected to perform fastest for a particular workload. Moreover, support for parallelism demonstrated here in the context of GPUs can be extended to support both CPU parallelism and distributed frameworks such as MPI to allow Enzyme to efficiently differentiate a wider variety of HPC applications.

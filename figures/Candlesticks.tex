@@ -1,0 +1,109 @@
+\documentclass[crop,tikz]{standalone}
+
+
+
+%\usepackage[dvipsnames]{xcolor}
+\definecolor{col1}{HTML}{f3722c}
+\definecolor{col2}{HTML}{f8961e}
+\definecolor{col3}{HTML}{f9c74f}
+\definecolor{col4}{HTML}{90be6d}
+\definecolor{col5}{HTML}{43aa8b}
+\definecolor{col6}{HTML}{577590}
+
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+
+\begin{document}
+
+\begin{tikzpicture}
+  \begin{axis}[
+    xbar, xmin=0,
+    ymin=0.5,
+    width=12cm,
+    bar width=25pt, % Set the y unit vector, that way, the plot will stretch to accommodate all bars
+    % enlarge y limits={abs=1.5},
+    % title={AD Overhead},
+    hide x axis,
+    % axis x line*=bottom,
+    axis y line*=left,
+    % ytick align=inside,
+    %y interval=5pt,
+    nodes near coords, nodes near coords align={horizontal},
+    %symbolic y coords={XSBench},%, RSBench, LULESH, LBM (Parboil), DG (CUDA), DG (ROCm)},
+    yticklabels={XSBench, RSBench, LULESH, LBM (Parboil), DG (CUDA), DG (ROCm)},
+    ylabel style={name=ylabel},
+    bar shift=0pt,
+    ytick={1, 2, 3, 4, 5, 6}
+  ]
+  % DG (ROCm)
+  \addplot[fill=col1] coordinates{
+    (3.2, 1)
+  };
+  
+  % RSBench
+  \addplot[fill=col2] coordinates{
+    (4.2, 2)
+  };
+  
+  % LULESH
+  \addplot[fill=col3] coordinates{
+    (2.01, 3)
+    };
+    
+  % LBM (Parboil)
+  \addplot[fill=col4] coordinates{
+    (6.3, 4)
+    };
+
+  % DG (CUDA)
+  \addplot[fill=col5] coordinates{
+    (18.35, 5)  % Was 27.5 at SC submission time
+    };
+    
+  \addplot[fill=col6] coordinates{
+    (5.4, 6)
+    }; 
+  \end{axis}
+\end{tikzpicture}
+
+
+%\begin{tikzpicture}
+%    \begin{axis}[
+%        xbar, xmin=0,
+%        width=12cm,
+%        height=3.5cm,
+%        ylabel={Benchmark},
+%        xlabel={AD Overhead},
+%        symbolic y coords={XSBench, RSBench, LULESH, LBM (Parboil), DG (CUDA), DG (ROCm)},
+%        nodes near coords, nodes near coords align={horizontal},
+%        ytick=data,
+%        bar width=17pt,
+%        xtick=data,
+%        nodes near coords,
+%        nodes near coords align={vertical}
+%    ]
+%    % XSBench
+%    \addplot coordinates{
+%        (3.2, XSBench)
+%        (4.4, RSBench)}
+%    ;
+%    
+%    % RSBench
+%    %\addplot coordinates{(4.4, RSBench)};
+%    
+%    % LULESH
+%    %\addplot coordinates{(1.71, LULESH)};
+%    
+%    % LBM (Parboil)
+%    %\addplot coordinates{(12.9, LBM (Parboil))};
+%    
+%    % DG (CUDA)
+%    %\addplot coordinates{(27.5, DG (CUDA))};
+%    
+%    % DG (ROCm)
+%    %\addplot coordinates{(5.4, DG (ROCm))};
+%    
+%    %\legend{XSBench, RSBench, LULESH, LBM (Parboil), DG (CUDA), DG (ROCm)}
+%    \end{axis}
+%\end{tikzpicture}
+\end{document}

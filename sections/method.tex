@@ -1,0 +1,321 @@
+
+\begin{figure}
+    \centering
+     \begin{tabular}{c|c}
+\textbf{Memory load}&\textbf{Memory store}\\
+\begin{minipage}[T]{0.45\linewidth}
+\begin{minted}{cpp}
+%res = load %ptr
+\end{minted}
+\end{minipage}& \begin{minipage}[T]{0.45\linewidth}
+\begin{minted}{cpp}
+store %ptr = %val
+\end{minted}
+\end{minipage}\\\\
+\textbf{Reverse memory load}&\textbf{Reverse memory store}\\
+\begin{minipage}[T]{0.45\linewidth}
+\begin{minted}{cpp}
+%tmp = load %d_res
+store %d_res = 0
+atomic %d_ptr += %tmp
+\end{minted}
+\end{minipage}&
+\begin{minipage}[T]{0.45\linewidth}
+\begin{minted}{cpp}
+%tmp = load %d_ptr
+store %d_ptr = 0
+load/store %d_val += %tmp
+\end{minted}
+\end{minipage}
+\end{tabular}
+    \vspace*{-2mm}
+    \caption{Rules for memory operations. Shadow registers \txtcode{d_res} and \txtcode{d_val} are thread-local since they shadow thread-local registers. There is no risk of racing on thread-local data and no special handling required. Both \txtcode{ptr} and shadow \txtcode{d_ptr} might be raced on and require atomics in the adjoint of the load. If \txtcode{ptr} (and consequently \txtcode{d_ptr}) is proven to be thread-local or have constant memory, the atomic update can be replaced with a serial update or reduction, respectively.}
+    \label{fig:memory_ops}
+    \vspace*{-2mm}
+\end{figure}
+
+\section{Reverse-Mode AD for GPU Kernels}
+\label{sec:method}
+Enzyme performs reverse-mode automatic differentiation over the LLVM intermediate representation (LLVM-IR).
+Since Enzyme is tightly integrated within the LLVM pipeline, it \change{can} differentiate any programming language with an LLVM frontend and can target any architecture that has an LLVM backend.
+%Moreover, Enzyme can make use of analysis and optimization passes available in LLVM.
+Most \change{importantly}, this alleviates the need for DSLs or language restrictions to apply AD to code.
+Prior to this work, GPU kernels could not be differentiated in reverse mode without being rewritten in an explicitly differentiable DSL (e.g., PyTorch). To differentiate GPU kernels, we extend Enzyme to handle shared-memory accesses, avoid data races in the presence of concurrent reads in the primal, differentiate parallel control flow (e.g., \txtcode{sync_threads}), and differentiate GPU-specific intrinsic functions (e.g., the LLVM-IR representation of the CUDA thread identifier \txtcode{threadIdx.x}).
+
+Enzyme first performs an \define{activity analysis}~\cite{bischof1992adifor}, which deduces what instructions and values in the function could impact the resulting gradient computation. For every active value, Enzyme creates a corresponding \define{shadow memory} location, which is used to store intermediate derivative values. For active function arguments, Enzyme expects the callee of the gradient function to pass in the shadow of each argument (see Section~\ref{subsec:usage}). We refer to prior work~\cite{enzymeNeurips} for a more detailed explanation of Enzyme on serial programs. Here, we will focus on our contribution of synthesizing gradient functions for GPU kernels and the necessary changes and improvements to Enzyme. 
+
+
+% \begin{figure}
+%     \centering
+%      \begin{tabular}{c|c|c}
+% \textbf{(a)}&\textbf{(b)}&\textbf{(c)}\\
+% \begin{minipage}[T]{0.26\linewidth}
+% \begin{minted}{cpp}
+% __device__
+% void f(...) {
+%     // Thread-local var:
+%     double y;
+%     ...
+%     // Non-atomic load/store
+%     d_y += val;
+% }
+% \end{minted}
+% \end{minipage}& \begin{minipage}[T]{0.34\linewidth}
+% \begin{minted}{cpp}
+% // Same memory location for all threads
+% double y;
+% __device__
+% void f(...) {
+%     reduce_add(&d_y, val);
+% }
+% \end{minted}
+% \end{minipage}& \begin{minipage}[T]{0.34\linewidth}
+% \begin{minted}{cpp}
+
+% // Unknown thread-aliasing of y
+% __device__
+% void f(double* y) {
+%     ...
+%     // Atomic increment
+%     // Always legal fallback
+%     atomic { d_y += val; }
+% }
+% \end{minted}
+% \end{minipage}
+% \end{tabular}
+%     \caption{Memory Types}
+%     \label{fig:my_label}
+% \end{figure}
+
+
+\subsection{GPU Memory-Aware Gradient Synthesis}
+\label{subsec:memory_rules}
+
+
+
+\begin{figure}[hb]
+    \centering
+ \begin{tabular}{c|c|c}
+\textbf{Case 1}&\textbf{Case 2}&\textbf{Case 3}\\
+\begin{minipage}[T]{0.3\linewidth}
+\begin{minted}[fontsize=\small]{cpp}
+A:
+  store %ptr
+  barrier
+B:
+  store %ptr
+\end{minted}
+\end{minipage}&%
+\begin{minipage}[T]{0.3\linewidth}
+\begin{minted}[fontsize=\small]{cpp}
+A:
+  store %ptr
+  barrier
+B:
+  load %ptr 
+\end{minted}
+\end{minipage}&%
+\begin{minipage}[T]{0.3\linewidth}
+\begin{minted}[fontsize=\small]{cpp}
+A:
+  load %ptr
+  barrier
+B:
+  store %ptr
+\end{minted}
+\end{minipage}
+\\\\
+\textbf{Gradient Case 1}&\textbf{Gradient Case 2}&\textbf{Gradient Case 3}\\
+\begin{minipage}[T]{0.3\linewidth}
+\begin{minted}[fontsize=\small, escapeinside=||]{cpp}
+|\grad|B:
+  load %d_ptr
+  store %d_ptr = 0
+  barrier
+|\grad|A:
+  load %d_ptr
+  store %d_ptr = 0
+\end{minted}
+\end{minipage}&%
+\begin{minipage}[T]{0.3\linewidth}
+\begin{minted}[fontsize=\small, escapeinside=||]{cpp}
+|\grad|B:
+  atomicAdd d_ptr
+  
+  barrier
+|\grad|A:
+  load %d_ptr
+  store %d_ptr = 0
+\end{minted}
+\end{minipage}&%
+\begin{minipage}[T]{0.3\linewidth}
+\begin{minted}[fontsize=\small, escapeinside=||]{cpp}
+|\grad|B:
+  load %d_ptr
+  store %d_ptr = 0
+  barrier
+|\grad|A:
+  atomicAdd %d_ptr
+|\;|
+\end{minted}
+\end{minipage}
+\end{tabular}
+    \vspace*{-2mm}
+    \caption{%The adjoint of a \txtcode{barrier} instruction split into a case analysis.
+    Illustrations for the case analysis of the \txtcode{barrier} instruction adjoint definition.
+    %to be itself and show that given the rules for memory operations given in Section~\ref{subsec:memory_rules} the correctness of that definition.
+    %The fourth case is a pointer load on both sides of the barrier, and thus the barrier is superfluous.}
+    }
+    \label{fig:case_analysis}
+%    \vspace*{-3mm}
+\end{figure}
+
+The most challenging aspect of generating fast and correct gradient code from parallel code is reasoning about memory operations,
+especially on the different memory types of the GPU.
+Both NVIDIA and AMD GPUs have thread-local, shared (block-local), and global memory,
+as well as constant memory that cannot change during the execution of a kernel.
+We define rules for synthesizing correct
+gradients according to which kind of memory is accessed. 
+We define the shadow of constant memory to be global memory, to ensure that the reverse pass is able to write the corresponding gradient to the shadow.
+%As with all parallel programming languages, 
+Our approach requires that the primal code is determinacy race-free. Thus, we assume the appropriate use of atomic accesses and barriers (see Section~\ref{subsec:barrier}). 
+
+Memory that is known to be thread-local cannot be accessed concurrently by multiple threads and is therefore equivalent to memory in serial AD.
+The gradient computation can access and update \change{non-atomically} without introducing a race.
+
+In contrast, global and shared memory can be accessed concurrently by multiple threads in the primal.
+In the gradient computation this can cause concurrent write accesses, and thus races, if the updates are performed non-atomically (see Figure~\ref{fig:benign_read}).
+The generic solution is to perform all accesses and updates in the reverse pass atomically. Such an approach, however, has severe performance downsides.
+Instead, we translate loads and stores of global- and shared-memory locations according to the rules displayed in Figure~\ref{fig:memory_ops}.
+That is, locations that are accessible by other threads are accessed atomically, while thread-local locations such as the thread-local shadow locations are accessed non-atomically.
+Further, we identify the special case where all threads in a block load from the same memory location in shared memory.
+In this case we employ an efficient block-level reduction computation that uses synchronous warp shuffle operations instead of atomic accesses.
+
+%\paragraph{Synthesizing Race-Free Gradients of Parallel Code}
+%\wmnote{This should be combined into subsection below}
+%As implied by the computational flow reversal of reverse mode AD, read races in the forward pass potentially lead to write races in the reverse pass, and thus undefined behavior and incorrect gradient values. For example, in Figure~\ref{fig:benign_read} the primal function \txtcode{set} has a all threads read the variable \txtcode{val}, a naive gradient (\txtcode{gradient_set}) based on serial semantics and will update \txtcode{d_val} (the shadow of \txtcode{val}) non-deterministically and yield incorrect gradients.
+%
+ 
+% \subsubsection{Global and Shared memory}
+
+
+\subsection{Adjoints of Barriers}
+\label{subsec:barrier}
+
+In GPU programming, barriers (e.g. \txtcode{sync_threads} in CUDA) can synchronize the execution of threads within a warp or block.
+This is especially important in the presence of shared memory because it allows threads to communicate efficiently without memory races. 
+%To preserve correctness of the gradient computation, no races can be introduced.
+We define the adjoint of barrier calls to be another barrier at the corresponding location in the reverse pass and show that this is sufficient by case analysis.
+
+Given two consecutive code blocks \emph{A} and \emph{B}, separated by a barrier, that write or read the same memory location,
+the barrier provides four distinct memory guarantees:
+\begin{enumerate}
+    \item All stores in A must complete prior to a \change{store} in B.
+    \item All stores in A must complete prior to a load in B.
+    \item All loads in A must complete prior to a store in B.
+    \item All loads in A must complete prior to a load in B.
+\end{enumerate}
+
+\noindent
+Figure~\ref{fig:case_analysis} shows minimal examples for cases 1--3; all four cases are discussed in the following.
+%We omit the discussion of case 4 as the barrier is not necessary in the primal and consequently neither in the adjoint.
+
+
+\begin{description}
+\item[Case 1: Store, Barrier, Store]
+%A store followed by a barrier operation and another store to the same memory location. 
+In the primal, the store in \txtcode{B} will clobber the store in \txtcode{A}, causing subsequent loads to see the value stored in \txtcode{B}. 
+As a result, we must ensure that the gradient will increment only the derivative of the value stored in \txtcode{B} and not the value stored in \txtcode{A}. 
+The barrier in the reverse pass ensures that only \txtcode{|\grad|B} could read a nonzero adjoint from \txtcode{d_ptr}, as desired.
+
+\item[Case 2: Store, Barrier, Load]
+%In the first case, we perform a store, then the barrier operation, followed by a load.
+
+For the reverse code to be correct we require  the load of \txtcode{d_ptr}, which is the adjoint of the primal load, to happen after all \txtcode{atomicAdd} operations, which are the results of the primal store.
+The barrier in the reverse pass is sufficient to guarantee that ordering.
+
+\item[Case 3: Load, Barrier, Store]
+%The second case is the inverse of Case 1, a load followed by a barrier and a subsequent store. 
+We require that all of the stores of \txtcode{d_ptr}, which are caused by the primal load,
+ complete prior to any \txtcode{atomicAdd}, which is the adjoint of the primal store.
+The barrier in the reverse pass will ensure this.
+Note that there cannot be a race in \txtcode{|\grad|B} because that would require a preexisting race in \txtcode{B}, which is violating our precondition.
+
+\item[Case 4: Load, Barrier, Load]
+In the case of a barrier  between two loads, the barrier operation is superfluous and can be removed with no change in semantics.
+%Therefore, the rules for memory semantics are strong enough and no-extra considerations are needed.
+Therefore, no extra considerations are needed.
+\end{description}
+
+\subsection{GPU Intrinsics and Shared-Memory Allocations}
+
+The gradient is independent of most GPU-specific built-ins and intrinsics (e.g., threadIdx.x) since they are known to LLVM to be pure, that is, independent of memory.
+Furthermore, most intrinisics are {\it inactive} and can consequently be recomputed without special handling by Enzyme.
+Exceptions include barriers and special memory accesses (e.g., tensor core or atomic memory operations).
+%The derivative of a barrier is described in Section~\ref{subsec:barrier},
+The former is described in Section~\ref{subsec:barrier}, and the latter can be implemented in a \change{manner similar} to traditional memory operations.
+
+ Shared-memory allocations require explicit handling to provide adjoint locations, also allocated in shared memory, that act as shadows.
+%for any potentially active uses that have an effect on the gradient values. 
+In LLVM-IR, a shared-memory allocation is represented as a global value with an explicit address space that is effectively uninitialized at kernel launch time.
+%Neither CUDA nor ROCm 
+Therefore, in addition to the shadow allocation, we generate initialization code that is executed at the very beginning of differentiated kernels.
+
+
+\subsection{Usage}
+\label{subsec:usage}
+Enzyme is available as a plugin for the LLVM ``core'' compiler component.
+% It can be loaded through the LLVM/Clang frontend, which supports various C-based languages such as C++, CUDA, HIP, and SyCL.
+When Enzyme is loaded \change{into compilers such as Clang}, an optimization pass is enabled that acts on calls to the \txtcode{__enzyme_autodiff} function.\footnote{\change{As Julia is JIT compiled, Enzyme.jl can explicitly call Enzyme's ABI for creating derivatives, rather than loading Enzyme into an existing optimization pipeline.}} 
+The first argument to this function is the primal that is differentiated, followed by the primal arguments interleaved with \change{shadow} locations for pointers.
+For usage within CUDA, one calls \txtcode{__enzyme_autodiff} from inside a device kernel that is launched through the normal CUDA API. 
+Figure \ref{fig:exdiff} shows how the GPU function \txtcode{inner} is differentiated and how the synthesized gradient, \txtcode{gradient_inner}, looks conceptually\footnote{Note that while we show CUDA code for readability, Enzyme acts on the lower level LLVM-IR that can be targeted by various languages and parallel programming models.}.
+%\footnote{Note that Enzyme will never generate a C++ gradient, instead generating a gradient at the LLVM level. The code shown here is an approximate translation of such a gradient, purely for readability.}
+
+\begin{figure}
+    \centering
+\begin{minipage}[T]{0.95\linewidth}
+\begin{minted}{cuda}
+__device__ void inner(float* a, float* x, float* y) {
+  y[threadIdx.x] = a[0] * x[threadIdx.x];
+}
+__device__ void __enzyme_autodiff(void*, ...);
+
+__global__ void gradient_kernel(float* a, float* da,
+                      float* x, float* dx,
+                      float* y, float* dy) {
+  __enzyme_autodiff((void*)inner, a, da, x, dx, y, dy);
+}
+\end{minted}
+\end{minipage}
+
+\bigskip
+\bigskip
+
+\begin{minipage}[T]{0.95\linewidth}
+\begin{minted}[fontsize=\small]{cuda}
+// Synthesized by Enzyme on the LLVM-IR level from the
+// definition of the inner function.
+__device__ void gradient_inner(float* a, float* da,
+                            float* x, float* dx,
+                            float* y, float* dy) {
+  y[threadIdx.x] = a[0] * x[threadIdx.x];
+
+  float dy_tmp = dy[threadIdx.x];
+  dy[threadIdx.x] = 0.0f;
+
+  float dx_tmp = a[0] * dy_tmp;
+  atomic { dx[threadIdx.x] += dx_tmp; }
+
+  float da_tmp = x[threadIdx.x] * dy_tmp;
+  atomic { da[0] += da_tmp; }
+}
+\end{minted}
+\end{minipage}
+    \vspace*{-1mm}
+    \caption{A simple GPU function, \txtcode{inner}, that is differentiated by Enzyme within the CUDA kernel \txtcode{gradient_kernel} (top). 
+    A high-level representation of the synthesized gradient Enzyme would \change{generate} is shown as  \txtcode{gradient_inner} (bottom).
+    The call to \txtcode{__enzyme_autodiff} is replaced by a call to the newly generated derivative function.}
+    \label{fig:exdiff}
+    \vspace*{-3mm}
+\end{figure}

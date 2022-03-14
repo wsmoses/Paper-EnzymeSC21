@@ -1,0 +1,47 @@
+\change{
+\section{Automatic Differentiation}
+\label{sec:ad}
+
+This section provides a brief summary of automatic differentiation  concepts that are relevant to this work. For a more thorough introduction, we refer to~\cite{griewank2008evaluating,naumann2011art,enzymeNeurips}.
+
+% AD general principles
+AD takes as its input a computer program $P$ that implements a mathematical function and produces a new program that computes the derivative, or gradient, of that function. AD tools are able to produce such a derivative by examining the individual instructions of $P$ (such as add or mul) and generating the corresponding partial derivatives of the instructions. By applying the chain rule of calculus, they then compute the derivative of the entire program by accumulating the partial derivatives all instructions of $P$. %
+%
+% the fact that the input program can be interpreted as the composition of
+% mathematical functions $I$ that are intrinsic to the programming language:
+% {\tt P:}$\{I_1;I_2;\dots I_p;\},$ implementing $F$ given as
+% $$F: {\bf I\!R}^n\!\rightarrow\!{\bf I\!R}^m \>\>\>\>\>\> F = f_p \circ f_{p-1} \circ \dots \circ f_1.$$
+% If we define the input to that function as
+% $V_0 = \hbox{\bf input}$ and the intermediate results after each operation as $V_k = f_k(V_{k-1})$,
+% then the derivatives of the intrinsic functions can be combined by using the chain rule as
+% $$F'(V_0) = f'_p(V_{p-1}) \times f'_{p-1}(V_{p-2}) \times \dots \times f'_1(V_0).$$
+% Applying an AD tool to $P$ will hence result in a program that computes $F'(V_0)$.
+%
+% Forward vs reverse, challenges of reverse
+%
+% Conceptually, this can be seen as a two-step process. First, each individual intrinsic function is differentiated, for example through a lookup table that defines the corresponding derivative operation for every operation in the input programming language. Second, these derivatives are combined by using the chain rule of calculus.
+%
+Any order of accumulating these derivatives is correct, but the order affects the efficiency, ease of implementation, and memory usage. Two particular strategies have become popular.
+
+\defn{Forward or tangent mode} combines the derivatives of instructions in the order in which the original instructions are evaluated, resulting in the propagation of derivatives from an instruction's input(s) to its output. Consider the instruction $v = f(w,u)$. The derivative of its output, $\dot{v}$, can be evaluated by computing $$\dot{v}=\frac{\partial f}{\partial w}\;\;\dot{w}{\;\;+\;\;\frac{\partial f}{\partial u}\;\;\dot{u}}.$$ For the overall program, the derivative of all outputs $z_0,\ldots,z_m$ with respect to one of its inputs $x$ can thus be computed by setting $\dot{x}=1$ at the start of the program, and reading the final value of the differential or \defn{shadow} $\dot{z}_0\ldots\dot{z}_m$ at the end of the program. Computing the derivative with respect to multiple inputs requires a forward mode evaluation for every input. This is also true for numeric differentiation or finite differences, where a separate evaluation with a small perturbation for each input variable is required. Numeric differentiation has the added disadvantage of being less accurate, and requiring the choice of a step size.
+
+%by first evaluating the original instructions in an \defn{augmented forward pass or primal code}, followed by
+\defn{Reverse or adjoint mode} combines the derivative of instructions in a \defn{reverse pass}, which computes the derivative or \defn{adjoint} of the instructions in the reverse order of the original program, and propagates them from an instruction's outputs to its inputs. Considering the same instruction $v = f(w,u)$, the derivative of inputs $\bar{w}, \bar{u}$ can be evaluated by computing\footnote{\change{In reverse mode, the derivative adds to the shadow value $\bar{w}$ rather than setting it directly. This ensure the derivatives from all uses of $w$ are taken into account. The total derivative of $w$ is finalized when all partial derivatives have been accumulated. This is guaranteed to occur before the reverse of the instruction that defines $w$ as all users of $w$ must occur after $w$ in the original program and thus all adjoints that update $w$ must occur prior the reverse of $w$'s defining instruction. Since we are adding to the shadow, we must also initialize the shadow to zero. This is primarily done in the forward pass when creating the primal variable. To accommodate variables which are redefined (e.g. when in a loop), the shadow is again zero initialized after its value is propagated to the shadow inputs.}} $$
+    \bar{w}+=\frac{\partial f}{\partial w}\;\;\bar{v};\quad{\bar{u}+=\frac{\partial f}{\partial u}\;\;\bar{v};}\quad \bar{v}=0.
+$$ The derivative of output $z$ with respect to any input $x$ can then be computed by setting $\bar{z}=1$ prior to evaluating all the partial derivatives, then reading the final value of the shadow input $\bar{x}$. This allows a single evaluation of reverse mode to compute the gradient (derivative of output with respect to all inputs) in a single evaluation. Evaluating the derivative with respect to multiple outputs, however, requires an evaluation per output. %
+%
+In practice, programs with a large number of inputs, but few outputs (e.g. a loss function) dominate both scientific and machine learning use cases. Since reverse mode can compute derivatives in this case asymptotically faster than other methods, our work focuses entirely on reverse-mode AD.
+
+Despite its attractiveness for practical applications, reverse mode AD is not without challenges, two of which are particularly relevant for this work. First, for a nonlinear instruction (such as $x^2$), one requires the original input to compute the derivative (in this case $2x$). While this is true for both forward and reverse modes, it is a challenge during the reverse pass. To provide the necessary inputs, the AD tool must evaluate all original instructions in an \defn{augmented forward pass} and cache the required intermediate values (potentially causing a large memory footprint), or store only selected intermediate variables from which others can be recomputed (trading some memory for additional computation). Our work addresses  analysis strategies to reduce the amount of storage needed, but does not address recomputation strategies, which are an active research subject on their own~\cite{griewank2000algorithm,wang2009minimal,aupy2016optimal} and are beyond the scope of this work.
+Second, since the derivative evaluation occurs in a different order than the original program, parallelization strategies that are correct for the original program may not be correct for the derivative program, and special care needs to be taken to avoid data races. This and other challenges are addressed in Section~\ref{sec:method}.
+
+% Relationship to backprop, DSL/high-level implementations
+The reverse mode of automatic differentiation is closely related to the backpropagation algorithm for neural networks, and both have been implemented in DSLs
+%The first potential remedy involves sacrificing generality, by rewriting HPC applications in a differentiable DSL 
+such as PyTorch~\cite{paszke2017automatic}, TensorFlow~\cite{abadi2016tensorflow}, and others~\cite{hu2020difftaichi,schoenholz2020jax,kochkov2021machine,de2018end}. These DSLs do not differentiate compute kernels directly, but expose high-level operations such as matrix multiply, and provide existing superoptimized GPU kernels for both the original function and its derivative. This approach is very effective for programs that can be written within these DSLs. For existing HPC applications or those that do not easily map to a DSL, this is unfortunately not an option. For this reason, there continues to be a need for AD tools such as Enzyme that can differentiate programs written in general purpose languages.}
+
+%%Reversing parallel kernels largely revolves around balancing the trade-offs between recomputation and caching incurred by the reversed access pattern.
+
+%The second potential remedy instead sacrifices performance, by using  differentiation methods such as forward mode AD or numerical differentiation, which do not require a reverse pass and can mostly avoid issues that stem from parallelism.
+%%In addition, such techniques tend to have a smaller constant factor overhead when compared with reverse-mode AD.
+%Unfortunately, these methods instead require a large number of evaluations of the function being differentiated, which scales linearly in the number of function input parameters and becomes impractical for applications such as neural networks, potential functions, and PDE-based numerical simulations.

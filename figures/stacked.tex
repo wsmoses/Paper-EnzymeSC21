@@ -1,0 +1,133 @@
+\documentclass{standalone}
+\usepackage{pgfplots}
+\usepackage{pgfkeys}
+
+\newcommand{\setvalue}[1]{\pgfkeys{/variables/#1}}
+\newcommand{\getvalue}[1]{\pgfkeysvalueof{/variables/#1}}
+
+\newcommand{\declare}[1]{%
+ \pgfkeys{
+  /variables/#1.is family,
+  /variables/#1.unknown/.style = {\pgfkeyscurrentpath/\pgfkeyscurrentname/.initial = ##1}
+ }%
+}
+
+\declare{}
+
+\usepackage{pgfplotstable}
+\usepgfplotslibrary{colorbrewer}
+\pgfplotsset{compat=1.16}
+
+\newcommand\resetstackedplots{
+\makeatletter
+\pgfplots@stacked@isfirstplottrue
+\makeatother
+\addplot [forget plot,draw=none] coordinates{(1,0) (2,0) (3,0)};
+}
+
+% \pgfplotsset{
+% /pgfplots/bar shift auto/.style={
+% /pgf/bar shift={%
+% (.5+0)*\pgfplotbarwidth +0.5*\pgfplotbarwidth + (0)*(#1)},
+% },
+% }
+
+\pgfplotsset{
+/pgfplots/bar shift auto/.style={
+/pgf/bar shift={%
+(.5+\plotnumofactualtype)*\pgfplotbarwidth + (\plotnumofactualtype)*(#1)},
+},
+}
+
+\pgfplotstableread[col sep=comma]{
+y, Benchmark,   AD, CacheLICM, RecomputeHeuristic, Inlining, PreOptimization
+1, RSBench,     4.4,   343.7,    1275.6, 6372.2, 10000
+}\RSBench
+
+\pgfplotstableread[col sep=comma]{
+y, Benchmark,   AD, Templating, PHI, AliasAnalysis, RecomputeHeuristic, PreOptimization
+2, XSBench,     3.16, 9.61, 14.47, 47.40, 95.75, 10000
+}\XSBench
+
+\pgfplotstableread[col sep=comma]{
+y, Benchmark,   AD, Allocator, RecomputeHeuristic, InlineCacheABI
+3, LBM,       6.39, 8.74, 19.87, 10000
+}\LBM
+
+\pgfplotstableread[col sep=comma]{
+y, Benchmark,   AD, Unrolling, MallocCoalescing, PreOptimization
+4, DG (CUDA),   17.85, 116.63, 1378.32, 10000
+}\DGCUDA
+
+\pgfplotstableread[col sep=comma]{
+y, Benchmark,   AD, Unrolling
+5, DG (ROCm),   5.4, 10000
+}\DGCUDA
+
+\pgfplotsset{
+    every axis/.style={
+        % xbar,
+        xbar stacked,
+        xmode = log,
+        point meta=rawx,
+        bar shift auto=0pt,
+        % bar width={1/2},
+        bar width={1/8},
+        ymin=1,ymax=7,
+        ytick={0,1,2,3,4,5,6},
+        yticklabels={NONE,XSBench, RSBench, LBM, DG (CUDA), LULESH, DGAMD},
+        height=10cm, scale only axis,
+        y tick label as interval,
+        nodes near coords align={horizontal},
+        ymajorgrids
+    },
+        /pgfplots/bar cycle list/.style={/pgfplots/cycle list={
+            {Set1-A,fill=Set1-A!50!white,mark=none},
+            {Set1-B,fill=Set1-B!50!white,mark=none},
+            {Set1-C,fill=Set1-C!50!white,mark=none},
+            {Set1-D,fill=Set1-D!50!white,mark=none},
+            {Set1-E,fill=Set1-E!50!white,mark=none},
+            {Set1-F,fill=Set1-F!50!white,mark=none},
+            {Set1-G,fill=Set1-G!50!white,mark=none},
+            {Set1-H,fill=Set1-H!50!white,mark=none},
+            },
+            },
+}
+
+\begin{document}%
+\begin{tikzpicture}
+   \begin{axis}
+   
+   
+    \pgfplotsinvokeforeach{AD,CacheLICM, RecomputeHeuristic, Inlining, Templating, PHI, AliasAnalysis, Allocator, Unrolling, MallocCoalescing}{
+        %\addlegendentry{#1}
+    }
+    
+    \resetstackedplots
+    \pgfplotsinvokeforeach{AD,CacheLICM, RecomputeHeuristic, Inlining}{
+        \addplot+[] table [y=y,x=#1] {\RSBench};
+        \addlegendentry{#1}
+        }
+    
+    \resetstackedplots   
+    \pgfplotsinvokeforeach{AD,Templating, PHI, AliasAnalysis, RecomputeHeuristic}{
+        \addplot+[] table [y=y,x=#1] {\XSBench};
+        \addlegendentry{#1}
+        }
+        
+    \resetstackedplots    
+    \setvalue{last = 0}
+    \pgfplotsinvokeforeach{AD,Allocator, RecomputeHeuristic}{
+        \addplot+[] table [y=y,x=#1] {\LBM};
+        \addlegendentry{#1}
+        }
+        
+    \resetstackedplots  
+    \setvalue{last = 0}  
+    \pgfplotsinvokeforeach{AD, Unrolling, MallocCoalescing}{
+        \addplot+[] table [y=y,x=#1] {\DGCUDA};
+        \addlegendentry{#1}
+        }
+    \end{axis}
+\end{tikzpicture}
+\end{document}

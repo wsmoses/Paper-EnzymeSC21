@@ -1,0 +1,25 @@
+\documentclass[crop,tikz]{standalone}
+
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+
+\definecolor{col1}{HTML}{f19c79}
+
+\begin{document}
+
+\begin{tikzpicture}
+   \begin{axis}[xlabel = {Iterations},
+                ylabel = {AD Overhead (factor)},
+                legend style={
+                    %area legend,
+                    at={(0.5,-0.2)},
+                    anchor=north,
+                    legend columns=1}
+                    ]
+      \addplot[ultra thick, col1, mark=*] coordinates {(50,6.481052005) (100, 6.39426382) (150, 6.390642797) (200, 6.334328024) (250, 6.341373235) (300, 6.334274164) (350, 6.34185761) (400, 6.336130255) (450, 6.334709727) (500, 6.354339902) (550, 6.339719006) (600, 6.340766878)};
+      \legend{{LBM -- Parboil (C \& CUDA)}}
+   \end{axis}
+   
+\end{tikzpicture}
+
+\end{document}
